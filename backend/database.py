@@ -1,65 +1,55 @@
-import sqlite3
-from pathlib import Path
+import os
 from datetime import datetime
+
+import psycopg2
+import psycopg2.extras
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 class Database:
-    def __init__(self, db_name="scheduler.db"):
-        self.db_path = Path(db_name)
-        self.connection = sqlite3.connect(
-            self.db_path,
-            check_same_thread=False
+
+    def __init__(self):
+        self.connection = psycopg2.connect(
+            os.getenv("DATABASE_URL")
         )
-        self.connection.row_factory = sqlite3.Row
-        self.cursor = self.connection.cursor()
+
+        self.connection.autocommit = True
+
         self.initialize_database()
 
     def initialize_database(self):
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                purpose TEXT NOT NULL,
-                booking_date TEXT NOT NULL,
-                booking_time TEXT NOT NULL,
-                duration INTEGER NOT NULL DEFAULT 30,
-                status TEXT DEFAULT 'CONFIRMED',
-                created_at TEXT NOT NULL
-            )
-        """)
 
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                message TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
+        with self.connection.cursor() as cursor:
 
-        self.connection.commit()
-        self.run_migrations()
-
-    def run_migrations(self):
-        self.cursor.execute("""
-            PRAGMA table_info(bookings)
-        """)
-
-        columns = {
-            row["name"]
-            for row in self.cursor.fetchall()
-        }
-
-        if "duration" not in columns:
-            self.cursor.execute("""
-                ALTER TABLE bookings
-                ADD COLUMN duration INTEGER NOT NULL DEFAULT 30
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bookings
+                (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    booking_date TEXT NOT NULL,
+                    booking_time TEXT NOT NULL,
+                    duration INTEGER DEFAULT 30,
+                    status TEXT DEFAULT 'CONFIRMED',
+                    created_at TIMESTAMP NOT NULL
+                )
             """)
 
-        self.connection.commit()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations
+                (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL
+                )
+            """)
 
     def save_booking(
         self,
@@ -72,9 +62,25 @@ class Database:
         duration=30,
         status="CONFIRMED"
     ):
-        self.cursor.execute("""
-            INSERT INTO bookings
-            (
+
+        with self.connection.cursor() as cursor:
+
+            cursor.execute("""
+                INSERT INTO bookings
+                (
+                    session_id,
+                    name,
+                    email,
+                    purpose,
+                    booking_date,
+                    booking_time,
+                    duration,
+                    status,
+                    created_at
+                )
+                VALUES
+                (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
                 session_id,
                 name,
                 email,
@@ -83,40 +89,29 @@ class Database:
                 booking_time,
                 duration,
                 status,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            session_id,
-            name,
-            email,
-            purpose,
-            booking_date,
-            booking_time,
-            duration,
-            status,
-            datetime.now().isoformat()
-        ))
-
-        self.connection.commit()
+                datetime.utcnow()
+            ))
 
     def is_slot_available(
         self,
         booking_date,
         booking_time
     ):
-        self.cursor.execute("""
-            SELECT COUNT(*)
-            FROM bookings
-            WHERE booking_date = ?
-            AND booking_time = ?
-            AND status = 'CONFIRMED'
-        """, (
-            booking_date,
-            booking_time
-        ))
 
-        count = self.cursor.fetchone()[0]
+        with self.connection.cursor() as cursor:
+
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM bookings
+                WHERE booking_date=%s
+                AND booking_time=%s
+                AND status='CONFIRMED'
+            """, (
+                booking_date,
+                booking_time
+            ))
+
+            count = cursor.fetchone()[0]
 
         return count == 0
 
@@ -126,74 +121,77 @@ class Database:
         role,
         message
     ):
-        self.cursor.execute("""
-            INSERT INTO conversations
-            (
+
+        with self.connection.cursor() as cursor:
+
+            cursor.execute("""
+                INSERT INTO conversations
+                (
+                    session_id,
+                    role,
+                    message,
+                    created_at
+                )
+                VALUES
+                (%s,%s,%s,%s)
+            """, (
                 session_id,
                 role,
                 message,
-                created_at
-            )
-            VALUES (?, ?, ?, ?)
-        """, (
-            session_id,
-            role,
-            message,
-            datetime.now().isoformat()
-        ))
-
-        self.connection.commit()
+                datetime.utcnow()
+            ))
 
     def get_conversation_history(
         self,
         session_id,
         limit=20
     ):
-        self.cursor.execute("""
-            SELECT role, message
-            FROM conversations
-            WHERE session_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-        """, (
-            session_id,
-            limit
-        ))
 
-        rows = self.cursor.fetchall()
+        with self.connection.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cursor:
+
+            cursor.execute("""
+                SELECT
+                    role,
+                    message
+                FROM conversations
+                WHERE session_id=%s
+                ORDER BY id DESC
+                LIMIT %s
+            """, (
+                session_id,
+                limit
+            ))
+
+            rows = cursor.fetchall()
 
         rows.reverse()
 
-        return [
-            {
-                "role": row["role"],
-                "message": row["message"]
-            }
-            for row in rows
-        ]
+        return rows
 
     def get_booking(
         self,
         session_id
     ):
-        self.cursor.execute("""
-            SELECT *
-            FROM bookings
-            WHERE session_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-        """, (
-            session_id,
-        ))
 
-        row = self.cursor.fetchone()
+        with self.connection.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cursor:
 
-        if row is None:
-            return None
+            cursor.execute("""
+                SELECT *
+                FROM bookings
+                WHERE session_id=%s
+                ORDER BY id DESC
+                LIMIT 1
+            """, (
+                session_id,
+            ))
 
-        return dict(row)
-    
-    
+            row = cursor.fetchone()
+
+        return row
 
     def close(self):
         self.connection.close()
