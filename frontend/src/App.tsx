@@ -202,9 +202,6 @@ export default function App() {
 
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [activeAgents, setActiveAgents] = useState<AgentType[]>(
-    []
-  );
 
   const [error, setError] = useState<string | null>(null);
 
@@ -472,7 +469,6 @@ export default function App() {
 
     setIsProcessing(true);
     setError(null);
-    setActiveAgents(['triage' as AgentType]);
 
     try {
       const response = await fetch(
@@ -510,8 +506,6 @@ export default function App() {
         isBookingAgent(data.current_agent)
           ? "booking"
           : "triage";
-
-      setActiveAgents([resolvedAgent]);
 
       const assistantMessage: Message = {
         id: `message-${Date.now()}-assistant`,
@@ -583,7 +577,7 @@ export default function App() {
       );
     } finally {
       setIsProcessing(false);
-      setActiveAgents([]);
+      
     }
   };
 
