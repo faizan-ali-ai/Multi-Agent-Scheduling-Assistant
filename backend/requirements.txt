@@ -14,4 +14,6 @@ requests
 pydantic
 dateparser
 
-gunicorn
+gunicorn 
+
+psycopg2-binary
