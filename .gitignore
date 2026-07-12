@@ -1,0 +1,30 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+my_ai_env/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment Variables
+.env
+.env.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
