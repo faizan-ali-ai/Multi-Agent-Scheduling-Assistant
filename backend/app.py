@@ -1,6 +1,7 @@
 import os
 
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -34,8 +35,8 @@ class ChatResponse(BaseModel):
     intent: str
     current_agent: str
     response: str
-    booking: dict
-    tool_result: dict
+    booking: Optional[dict] = None     
+    tool_result: Optional[dict] = None
 
 
 @asynccontextmanager
