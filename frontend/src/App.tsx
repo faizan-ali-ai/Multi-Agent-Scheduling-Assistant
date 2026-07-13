@@ -526,41 +526,58 @@ export default function App() {
         ],
       }));
 
-      const confirmedBooking =
-        data.booking &&
-        (
-          data.booking.status ??
-          "CONFIRMED"
-        ).toUpperCase() === "CONFIRMED";
+      const reservationResult =
+        data.tool_result?.reservation as
+          | {
+              success?: boolean;
+              booking?: Booking | null;
+            }
+          | undefined;
 
-      if (confirmedBooking && data.booking) {
-        const newBooking = data.booking;
+      const confirmedBooking =
+        reservationResult?.success === true &&
+        reservationResult.booking?.status?.toUpperCase() ===
+          'CONFIRMED'
+          ? reservationResult.booking
+          : data.booking?.status?.toUpperCase() ===
+              'CONFIRMED'
+            ? data.booking
+            : null;
+
+      if (confirmedBooking) {
+        const newBooking = confirmedBooking;
+
+        const isNewBooking =
+          bookingIdRef.current !== newBooking.id;
 
         setBooking(newBooking);
+        setSchedulingState('confirmed');
 
-        setSchedulingState("confirmed");
+        if (isNewBooking) {
+          bookingIdRef.current = newBooking.id;
 
-        bookingIdRef.current = newBooking.id;
+          setShowSuccess(true);
 
-        setShowSuccess(true);
+          confetti({
+            particleCount: 120,
+            spread: 80,
+            origin: {
+              y: 0.65,
+            },
+          });
 
-        confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: {
-            y: 0.65,
-          },
-        });
-
-        window.setTimeout(() => {
-          setShowSuccess(false);
-        }, 4500);
-      }
-      else if (bookingWorkflow) {
-        setSchedulingState("processing");
-      }
-      else {
-        setSchedulingState("idle");
+          window.setTimeout(() => {
+            setShowSuccess(false);
+          }, 4500);
+        }
+      } else if (bookingWorkflow) {
+        setSchedulingState('processing');
+      } else {
+        setSchedulingState((previousState) =>
+          previousState === 'confirmed'
+            ? 'confirmed'
+            : 'idle'
+        );
       }
 
     } catch (requestError) {
